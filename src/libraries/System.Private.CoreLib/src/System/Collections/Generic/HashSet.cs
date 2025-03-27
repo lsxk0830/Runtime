@@ -10,96 +10,88 @@ using System.Runtime.Serialization;
 
 namespace System.Collections.Generic
 {
+    /// <summary>
+    /// 基于哈希表实现的集合，存储唯一元素，支持高效查找、插入和删除操作。
+    /// </summary>
     [DebuggerTypeProxy(typeof(ICollectionDebugView<>))]
     [DebuggerDisplay("Count = {Count}")]
     [Serializable]
     [TypeForwardedFrom("System.Core, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")]
     public class HashSet<T> : ICollection<T>, ISet<T>, IReadOnlyCollection<T>, IReadOnlySet<T>, ISerializable, IDeserializationCallback
     {
-        // This uses the same array-based implementation as Dictionary<TKey, TValue>.
+        // 这使用了基于数组的实现与词典<tkey，tvalue>。
+        // 序列化相关常量
+        private const string CapacityName = "Capacity"; // 请勿重命名（二进制序列化）
+        private const string ElementsName = "Elements"; // 请勿重命名（二进制序列化）
+        private const string ComparerName = "Comparer"; // 请勿重命名（二进制序列化）
+        private const string VersionName = "Version"; // 请勿重命名（二进制序列化）
 
-        // Constants for serialization
-        private const string CapacityName = "Capacity"; // Do not rename (binary serialization)
-        private const string ElementsName = "Elements"; // Do not rename (binary serialization)
-        private const string ComparerName = "Comparer"; // Do not rename (binary serialization)
-        private const string VersionName = "Version"; // Do not rename (binary serialization)
-
-        /// <summary>Cutoff point for stackallocs. This corresponds to the number of ints.</summary>
+        /// <summary>栈分配的阈值（对应整数数量）。</summary>
         private const int StackAllocThreshold = 100;
 
         /// <summary>
-        /// When constructing a hashset from an existing collection, it may contain duplicates,
-        /// so this is used as the max acceptable excess ratio of capacity to count. Note that
-        /// this is only used on the ctor and not to automatically shrink if the hashset has, e.g,
-        /// a lot of adds followed by removes. Users must explicitly shrink by calling TrimExcess.
-        /// This is set to 3 because capacity is acceptable as 2x rounded up to nearest prime.
+        /// 当从现有集合构造时，可能包含重复项，此值作为容量与元素数的最大可接受比率。
+        /// 注意：此阈值仅在构造函数中使用，不会自动缩容，需显式调用 TrimExcess。
         /// </summary>
         private const int ShrinkThreshold = 3;
         private const int StartOfFreeList = -3;
 
-        private int[]? _buckets;
-        private Entry[]? _entries;
+        private int[]? _buckets;// 桶数组，存储链表头索引（基于1）
+        private Entry[]? _entries;// 条目数组，存储元素及哈希码
 #if TARGET_64BIT
-        private ulong _fastModMultiplier;
+        private ulong _fastModMultiplier;// 快速取模乘数
 #endif
-        private int _count;
-        private int _freeList;
-        private int _freeCount;
-        private int _version;
-        private IEqualityComparer<T>? _comparer;
+        private int _count;// 总元素数（含自由链表）
+        private int _freeList;// 自由链表头索引
+        private int _freeCount;// 自由链表节点数
+        private int _version;// 版本号（用于并发修改检测）
+        private IEqualityComparer<T>? _comparer;// 比较器
 
-        #region Constructors
-
+        #region 构造函数
+        /// <summary>使用默认比较器初始化空集合。</summary>
         public HashSet() : this((IEqualityComparer<T>?)null) { }
-
+        /// <summary>使用指定比较器初始化空集合。</summary>
         public HashSet(IEqualityComparer<T>? comparer)
         {
-            // For reference types, we always want to store a comparer instance, either
-            // the one provided, or if one wasn't provided, the default (accessing
-            // EqualityComparer<TKey>.Default with shared generics on every dictionary
-            // access can add measurable overhead).  For value types, if no comparer is
-            // provided, or if the default is provided, we'd prefer to use
-            // EqualityComparer<TKey>.Default.Equals on every use, enabling the JIT to
-            // devirtualize and possibly inline the operation.
+            // 对引用类型，始终存储比较器实例（默认或指定）
+            // 对值类型，若未提供或使用默认比较器，直接使用 EqualityComparer<T>.Default
             if (!typeof(T).IsValueType)
             {
                 _comparer = comparer ?? EqualityComparer<T>.Default;
 
-                // Special-case EqualityComparer<string>.Default, StringComparer.Ordinal, and StringComparer.OrdinalIgnoreCase.
-                // We use a non-randomized comparer for improved perf, falling back to a randomized comparer if the
-                // hash buckets become unbalanced.
+                // 特殊处理字符串比较器以优化性能
                 if (typeof(T) == typeof(string) &&
                     NonRandomizedStringEqualityComparer.GetStringComparer(_comparer) is IEqualityComparer<string> stringComparer)
                 {
                     _comparer = (IEqualityComparer<T>)stringComparer;
                 }
             }
-            else if (comparer is not null && // first check for null to avoid forcing default comparer instantiation unnecessarily
+            else if (comparer is not null && // 首先检查null，以避免不必要地迫使默认比较实例化
                      comparer != EqualityComparer<T>.Default)
             {
                 _comparer = comparer;
             }
         }
-
+        /// <summary>初始化具有指定初始容量的集合。</summary>
         public HashSet(int capacity) : this(capacity, null) { }
-
+        /// <summary>从集合元素初始化，使用默认比较器。</summary>
         public HashSet(IEnumerable<T> collection) : this(collection, null) { }
-
+        /// <summary>从集合元素初始化，使用指定比较器。</summary>
         public HashSet(IEnumerable<T> collection, IEqualityComparer<T>? comparer) : this(comparer)
         {
             if (collection == null)
             {
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.collection);
             }
-
+            //若源为相同比较器的 HashSet，直接复制结构
             if (collection is HashSet<T> otherAsHashSet && EffectiveEqualityComparersAreEqual(this, otherAsHashSet))
             {
                 ConstructFrom(otherAsHashSet);
             }
             else
             {
-                // To avoid excess resizes, first set size based on collection's count. The collection may
-                // contain duplicates, so call TrimExcess if resulting HashSet is larger than the threshold.
+                // 为了避免过度尺寸，首先根据收集的计数设置大小.
+                //该集合可能包含重复项，因此，如果产生的标签大于阈值，请调用Trimexcess。
                 if (collection is ICollection<T> coll)
                 {
                     int count = coll.Count;
@@ -142,7 +134,7 @@ namespace System.Collections.Generic
             HashHelpers.SerializationInfoTable.Add(this, info);
         }
 
-        /// <summary>Initializes the HashSet from another HashSet with the same element type and equality comparer.</summary>
+        /// <summary>从另一个带有相同元素类型和平等比较的标签初始化标签.</summary>
         private void ConstructFrom(HashSet<T> source)
         {
             Debug.Assert(EffectiveEqualityComparersAreEqual(this, source), "must use identical effective comparers.");
