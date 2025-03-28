@@ -90,8 +90,7 @@ namespace System.Collections.Generic
             }
             else
             {
-                // 为了避免过度尺寸，首先根据收集的计数设置大小.
-                //该集合可能包含重复项，因此，如果产生的标签大于阈值，请调用Trimexcess。
+                // 根据集合元素数量初始化容量
                 if (collection is ICollection<T> coll)
                 {
                     int count = coll.Count;
@@ -127,10 +126,8 @@ namespace System.Collections.Generic
         [EditorBrowsable(EditorBrowsableState.Never)]
         protected HashSet(SerializationInfo info, StreamingContext context)
         {
-            // We can't do anything with the keys and values until the entire graph has been
-            // deserialized and we have a reasonable estimate that GetHashCode is not going to
-            // fail.  For the time being, we'll just cache this.  The graph is not valid until
-            // OnDeserialization has been called.
+            // 在整个图被反序列化并且我们有一个合理的估计GetHashCode不会失败之前，我们无法对键和值做任何事情。
+            //目前，我们只会缓存这个。在调用OnDeserialize之前，该图无效。
             HashHelpers.SerializationInfoTable.Add(this, info);
         }
 
@@ -141,9 +138,7 @@ namespace System.Collections.Generic
 
             if (source.Count == 0)
             {
-                // As well as short-circuiting on the rest of the work done,
-                // this avoids errors from trying to access source._buckets
-                // or source._entries when they aren't initialized.
+                // 除了缩短其余工作的执行时间外，这还可以避免在源._buckets或源._entries未初始化时尝试访问它们而导致的错误。
                 return;
             }
 
@@ -185,7 +180,7 @@ namespace System.Collections.Generic
 
         void ICollection<T>.Add(T item) => AddIfNotPresent(item, out _);
 
-        /// <summary>Removes all elements from the <see cref="HashSet{T}"/> object.</summary>
+        /// <summary>清空集合所有元素。</summary>
         public void Clear()
         {
             int count = _count;
@@ -202,12 +197,10 @@ namespace System.Collections.Generic
             }
         }
 
-        /// <summary>Determines whether the <see cref="HashSet{T}"/> contains the specified element.</summary>
-        /// <param name="item">The element to locate in the <see cref="HashSet{T}"/> object.</param>
-        /// <returns>true if the <see cref="HashSet{T}"/> object contains the specified element; otherwise, false.</returns>
+        /// <summary>判断集合是否包含指定元素</summary>
         public bool Contains(T item) => FindItemIndex(item) >= 0;
 
-        /// <summary>Gets the index of the item in <see cref="_entries"/>, or -1 if it's not in the set.</summary>
+        /// <summary>获取元素在条目数组中的索引，不存在则返回-1。</summary>
         private int FindItemIndex(T item)
         {
             int[]? buckets = _buckets;
@@ -280,7 +273,7 @@ namespace System.Collections.Generic
             return ref buckets[(uint)hashCode % (uint)buckets.Length];
 #endif
         }
-
+        /// <summary>移除指定元素。</summary>
         public bool Remove(T item)
         {
             if (_buckets != null)
