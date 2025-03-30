@@ -8,10 +8,10 @@ using System.Runtime.CompilerServices;
 namespace System.Collections.Generic
 {
     /// <summary>
-    /// Represents a first-in, first-out collection of objects.
+    /// 表示一个先进先出（FIFO）的对象集合。
     /// </summary>
     /// <remarks>
-    /// Implemented as a circular buffer, so <see cref="Enqueue(T)"/> and <see cref="Dequeue"/> are typically <c>O(1)</c>.
+    /// 实现为循环缓冲区，因此 <see cref="Enqueue(T)"/> 和 <see cref="Dequeue"/> 通常为 O(1) 时间复杂度。
     /// </remarks>
     [DebuggerTypeProxy(typeof(QueueDebugView<>))]
     [DebuggerDisplay("Count = {Count}")]
@@ -21,29 +21,26 @@ namespace System.Collections.Generic
         ICollection,
         IReadOnlyCollection<T>
     {
-        private T[] _array;
-        private int _head;       // The index from which to dequeue if the queue isn't empty.
-        private int _tail;       // The index at which to enqueue if the queue isn't full.
-        private int _size;       // Number of elements.
-        private int _version;
+        private T[] _array; // 存储元素的数组
+        private int _head; // 队列头部索引（下一个出队位置）
+        private int _tail;// 队列尾部索引（下一个入队位置）
+        private int _size; // 当前元素数量
+        private int _version; // 版本号（用于迭代时检测修改）
 
-        // Creates a queue with room for capacity objects. The default initial
-        // capacity and grow factor are used.
+        // 创建空队列（初始容量为0）
         public Queue()
         {
             _array = Array.Empty<T>();
         }
 
-        // Creates a queue with room for capacity objects. The default grow factor
-        // is used.
+        // 指定初始容量创建队列
         public Queue(int capacity)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(capacity);
             _array = new T[capacity];
         }
 
-        // Fills a Queue with the elements of an ICollection.  Uses the enumerator
-        // to get each of the elements.
+        // 通过集合初始化队列
         public Queue(IEnumerable<T> collection)
         {
             ArgumentNullException.ThrowIfNull(collection);
@@ -55,7 +52,7 @@ namespace System.Collections.Generic
         public int Count => _size;
 
         /// <summary>
-        /// Gets the total numbers of elements the internal data structure can hold without resizing.
+        /// 队列长度及数组长度
         /// </summary>
         public int Capacity => _array.Length;
 
@@ -64,7 +61,7 @@ namespace System.Collections.Generic
 
         object ICollection.SyncRoot => this;
 
-        // Removes all Objects from the queue.
+        // 从队列中删除所有对象。
         public void Clear()
         {
             if (_size != 0)
@@ -90,8 +87,7 @@ namespace System.Collections.Generic
             _version++;
         }
 
-        // CopyTo copies a collection into an Array, starting at a particular
-        // index into the array.
+        // CopyTo copies a collection into an Array, starting at a particular index into the array.
         public void CopyTo(T[] array, int arrayIndex)
         {
             ArgumentNullException.ThrowIfNull(array);
@@ -163,16 +159,18 @@ namespace System.Collections.Generic
             }
         }
 
-        // Adds item to the tail of the queue.
+        /// <summary>
+        /// 将元素添加到队列末尾。
+        /// </summary>
         public void Enqueue(T item)
         {
             if (_size == _array.Length)
             {
-                Grow(_size + 1);
+                Grow(_size + 1); // 触发扩容
             }
 
             _array[_tail] = item;
-            MoveNext(ref _tail);
+            MoveNext(ref _tail); // 移动尾指针（循环逻辑）
             _size++;
             _version++;
         }
@@ -188,9 +186,9 @@ namespace System.Collections.Generic
 
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<T>)this).GetEnumerator();
 
-        // Removes the object at the head of the queue and returns it. If the queue
-        // is empty, this method throws an
-        // InvalidOperationException.
+        /// <summary>
+        /// 移除并返回队列头部的元素。若队列为空则抛出异常。
+        /// </summary>
         public T Dequeue()
         {
             int head = _head;
@@ -204,9 +202,9 @@ namespace System.Collections.Generic
             T removed = array[head];
             if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
             {
-                array[head] = default!;
+                array[head] = default!; // 清空引用防止内存泄漏
             }
-            MoveNext(ref _head);
+            MoveNext(ref _head);// 移动头指针
             _size--;
             _version++;
             return removed;
@@ -234,9 +232,9 @@ namespace System.Collections.Generic
             return true;
         }
 
-        // Returns the object at the head of the queue. The object remains in the
-        // queue. If the queue is empty, this method throws an
-        // InvalidOperationException.
+        /// <summary>
+        /// 返回队列头部元素但不移除。若队列为空则抛出异常。
+        /// </summary>
         public T Peek()
         {
             if (_size == 0)
@@ -305,15 +303,16 @@ namespace System.Collections.Generic
             return arr;
         }
 
-        // PRIVATE Grows or shrinks the buffer to hold capacity objects. Capacity
-        // must be >= _size.
+        /// <summary>
+        /// 设置队列容量（需 >= 当前元素数量）。
+        /// </summary>
         private void SetCapacity(int capacity)
         {
             Debug.Assert(capacity >= _size);
             T[] newarray = new T[capacity];
             if (_size > 0)
             {
-                if (_head < _tail)
+                if (_head < _tail) // 分两段复制数据（处理循环缓冲区折返）
                 {
                     Array.Copy(_array, _head, newarray, 0, _size);
                 }
@@ -376,10 +375,8 @@ namespace System.Collections.Generic
         }
 
         /// <summary>
-        /// Ensures that the capacity of this Queue is at least the specified <paramref name="capacity"/>.
+        /// 确保队列容量至少为指定值。
         /// </summary>
-        /// <param name="capacity">The minimum capacity to ensure.</param>
-        /// <returns>The new capacity of this queue.</returns>
         public int EnsureCapacity(int capacity)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(capacity);
@@ -392,6 +389,10 @@ namespace System.Collections.Generic
             return _array.Length;
         }
 
+        /// <summary>
+        /// 扩容
+        /// 扩容策略始终基于 原容量 × 2 和 原容量 +4 的较大值
+        /// </summary>
         private void Grow(int capacity)
         {
             Debug.Assert(_array.Length < capacity);
@@ -401,25 +402,23 @@ namespace System.Collections.Generic
 
             int newcapacity = GrowFactor * _array.Length;
 
-            // Allow the list to grow to maximum possible capacity (~2G elements) before encountering overflow.
-            // Note that this check works even when _items.Length overflowed thanks to the (uint) cast
+            // 在遇到溢出之前，允许列表增长到最大可能的容量（〜2G元素）。
+            // 请注意，即使在_items.length溢出的情况下，此检查也有效
             if ((uint)newcapacity > Array.MaxLength) newcapacity = Array.MaxLength;
 
-            // Ensure minimum growth is respected.
+            // 确保最低增长。
             newcapacity = Math.Max(newcapacity, _array.Length + MinimumGrow);
 
-            // If the computed capacity is still less than specified, set to the original argument.
-            // Capacities exceeding Array.MaxLength will be surfaced as OutOfMemoryException by Array.Resize.
+            // 如果新数组容量小于原来的容量，则取原来的容量值
             if (newcapacity < capacity) newcapacity = capacity;
 
             SetCapacity(newcapacity);
         }
 
-        // Implements an enumerator for a Queue.  The enumerator uses the
-        // internal version number of the list to ensure that no modifications are
-        // made to the list while an enumeration is in progress.
-        public struct Enumerator : IEnumerator<T>,
-            IEnumerator
+        /// <summary>
+        /// 队列的枚举器（非线程安全，迭代期间检测版本号变化）。
+        /// </summary>
+        public struct Enumerator : IEnumerator<T>, IEnumerator
         {
             private readonly Queue<T> _q;
             private readonly int _version;

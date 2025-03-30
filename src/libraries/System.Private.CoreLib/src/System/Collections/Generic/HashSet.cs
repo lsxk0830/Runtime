@@ -1369,8 +1369,7 @@ namespace System.Collections.Generic
         public static IEqualityComparer<HashSet<T>> CreateSetComparer() => new HashSetEqualityComparer<T>();
 
         /// <summary>
-        /// Initializes buckets and slots arrays. Uses suggested capacity by finding next prime
-        /// greater than or equal to capacity.
+        ///初始化buckets和entries. 通过找到大于或等于容量的下一个素数来确定容量
         /// </summary>
         private int Initialize(int capacity)
         {
@@ -1389,8 +1388,8 @@ namespace System.Collections.Generic
             return size;
         }
 
-        /// <summary>Adds the specified element to the set if it's not already contained.</summary>
-        /// <param name="value">The element to add to the set.</param>
+        /// <summary>如果尚未包含指定的元素，则将指定元素添加到集合.</summary>
+        /// <param name="value">要添加到集合的元素.</param>
         /// <param name="location">The index into <see cref="_entries"/> of the element.</param>
         /// <returns>true if the element is added to the <see cref="HashSet{T}"/> object; false if the element is already present.</returns>
         private bool AddIfNotPresent(T value, out int location)
@@ -1410,7 +1409,7 @@ namespace System.Collections.Generic
             uint collisionCount = 0;
             ref int bucket = ref Unsafe.NullRef<int>();
 
-            if (typeof(T).IsValueType && // comparer can only be null for value types; enable JIT to eliminate entire if block for ref types
+            if (typeof(T).IsValueType && // 如果是值类型
                 comparer == null)
             {
                 hashCode = value!.GetHashCode();
